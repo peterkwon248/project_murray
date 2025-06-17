@@ -4,9 +4,11 @@ import gspread
 from google.oauth2.service_account import Credentials
 import plotly.express as px
 import re
+import os
+import json
 
-# 🔐 Railway 환경 호환용 secrets 인증 (json.loads 필요 없음!)
-service_account_info = st.secrets["gcp_service_account"]
+# 🔐 Railway 환경변수 인증 처리
+service_account_info = json.loads(os.environ["gcp_service_account"])
 credentials = Credentials.from_service_account_info(
     service_account_info,
     scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"]
