@@ -3,10 +3,9 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 import plotly.express as px
-import json
 
-# 🔐 secrets.toml 기반 인증 처리
-service_account_info = json.loads(st.secrets["GOOGLE_CREDS"])
+# 🔐 secrets 기반 인증 처리 (json.loads 제거!)
+service_account_info = st.secrets["GOOGLE_CREDS"]
 scoped_credentials = Credentials.from_service_account_info(
     service_account_info,
     scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"]

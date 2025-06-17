@@ -5,7 +5,7 @@ from google.oauth2.service_account import Credentials
 import plotly.express as px
 import re
 
-# 🔐 구글 시크릿 인증 처리
+# 🔐 Railway 환경 호환용 secrets 인증 (json.loads 필요 없음!)
 service_account_info = st.secrets["gcp_service_account"]
 credentials = Credentials.from_service_account_info(
     service_account_info,
@@ -109,7 +109,7 @@ if "날짜" in df.columns and "정산 금액" in df.columns:
     fig2.update_layout(yaxis_title="정산 금액 (만원)", yaxis_tickformat=".1f")
     st.plotly_chart(fig2, use_container_width=True)
 
-# 📈 날짜별 정산 수량 추이 (선 그래프)
+# 📈 날짜별 정산 수량 추이
 if "날짜" in df.columns and "수량" in df.columns:
     st.subheader("📈 날짜별 정산 수량 추이")
     qty_trend = df.groupby("날짜")["수량"].sum().reindex(full_dates, fill_value=0).reset_index()
@@ -130,7 +130,7 @@ if "모델명" in df.columns and "정산 금액" in df.columns:
     fig3.update_layout(yaxis_title="정산 금액 (만원)", yaxis_tickformat=".1f")
     st.plotly_chart(fig3, use_container_width=True)
 
-# 📦 모델명별 정산 수량 (막대 차트)
+# 📦 모델명별 정산 수량
 if "모델명" in df.columns and "수량" in df.columns:
     st.subheader("📦 모델명별 정산 수량")
     qty_model = df.groupby("모델명")["수량"].sum().reset_index()
