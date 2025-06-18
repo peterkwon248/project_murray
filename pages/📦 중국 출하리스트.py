@@ -12,8 +12,8 @@ import json
 today = datetime.now(ZoneInfo("Asia/Seoul")).date()
 today_str = today.strftime("%Y-%m-%d")
 st.set_page_config(page_title="중국 출하 리스트 (ETA 기준)", layout="wide")
-st.title("📦 중국 출하 리스트 (🗕 ETA+1 기준 미도착 필터링)")
-st.markdown(f"### ⏰ 기준일: **{today_str} (KST)**")
+st.title("\ud83d\udce6 중국 출하 리스트 (\ud83d\uddf5 ETA+1 기준 미도착 필터링)")
+st.markdown(f"### \u23f0 기준일: **{today_str} (KST)**")
 
 # ✅ 구글 인증
 if "gcp_service_account" in os.environ:
@@ -40,23 +40,27 @@ df["ETD배타는 날"] = pd.to_datetime(df["ETD배타는 날"], errors="coerce")
 df["회사실제 도착일"] = pd.to_datetime(df["회사실제 도착일"], errors="coerce")
 df["회사도착 예상일(=ETA+1)"] = pd.to_datetime(df["회사도착 예상일(=ETA+1)"], errors="coerce")
 
-# ✅ 필터링
-filtered_df = df[df["회사도착 예상일(=ETA+1)"].dt.date >= today].copy()
+# ✅ 필터링 (지연 포함 + 도착 상태 기반)
+filtered_df = df[
+    (df["회사도착 예상일(=ETA+1)"].notna()) &
+    (
+        (df["회사도착 예상일(=ETA+1)"].dt.date >= today) |
+        ((df["회사도착 예상일(=ETA+1)"].dt.date < today) & (df["상태"].str.strip() != "회사 도착"))
+    )
+].copy()
 
-# ✅ 도착여부
+# ✅ 도착여부 (상태 기반)
 filtered_df["도착여부"] = filtered_df.apply(
-    lambda row: "도착 완료 ✅" if (
-        pd.notna(row["회사실제 도착일"]) and str(row["상태"]).strip() == "회사 도착"
-    ) else "미도착 🔴", axis=1
+    lambda row: "도착 완료 ✅" if str(row["상태"]).strip() == "회사 도착" else "미도착 🔴",
+    axis=1
 )
 
 # ✅ D-Day 계산
 def classify_dday(row):
     eta = row["회사도착 예상일(=ETA+1)"]
-    actual = row["회사실제 도착일"]
     if pd.isna(eta):
         return "N/A"
-    elif eta.date() < today and pd.isna(actual):
+    elif eta.date() < today and row["도착여부"] == "미도착 🔴":
         return f"D+{(today - eta.date()).days} ⚠️"
     elif eta.date() == today:
         return "Today"
@@ -125,7 +129,7 @@ calendar(events=events, options={
     }
 }, key="calendar_view_only")
 
-# ✅ 사이드바: 날짜 + 모델명 검색
+# ✅ 사이드바 필터
 st.sidebar.markdown("## 🔎 날짜 및 모델명 필터")
 selected_sidebar_date = st.sidebar.date_input("출하 예정일 선택", value=today)
 search_term = st.sidebar.text_input("🔍 모델명 검색", "")
@@ -136,7 +140,7 @@ if search_term:
 arrived = matched[matched["도착여부"] == "도착 완료 ✅"]
 not_arrived = matched[matched["도착여부"] == "미도착 🔴"]
 
-# ✅ 미도착 카드
+# ✅ 미도착 카드 뷰
 if not not_arrived.empty:
     st.markdown("---")
     st.markdown(f"## 🔴 {selected_sidebar_date} 미도착 출하건")
@@ -147,9 +151,9 @@ if not not_arrived.empty:
         border_color = get_border_color(d_day)
         with cols[i % 3]:
             st.markdown(f"""
-            <div style="border:3px solid {border_color}; border-radius:14px; padding:20px; margin:10px; background-color:#fff0f0;">
+            <div style=\"border:3px solid {border_color}; border-radius:14px; padding:20px; margin:10px; background-color:#fff0f0;\">
                 <h4>📦 {row['PRODUCT']}</h4>
-                <div style="font-size:16px; line-height:1.8;">
+                <div style=\"font-size:16px; line-height:1.8;\">
                     🔢 발주수량: {row['발주수량']}개<br>
                     📝 주문상세: {row['주문상세']}<br>
                     📦 상태: {row['상태표시']}<br>
@@ -160,7 +164,7 @@ if not not_arrived.empty:
             </div>
             """, unsafe_allow_html=True)
 
-# ✅ 도착 완료 카드
+# ✅ 도착 완료 카드 뷰
 if not arrived.empty:
     st.markdown("---")
     st.markdown(f"## ✅ {selected_sidebar_date} 도착 완료 출하건")
@@ -171,9 +175,9 @@ if not arrived.empty:
         border_color = get_border_color(d_day)
         with cols[i % 3]:
             st.markdown(f"""
-            <div style="border:3px solid {border_color}; border-radius:14px; padding:20px; margin:10px; background-color:#f0fff0;">
+            <div style=\"border:3px solid {border_color}; border-radius:14px; padding:20px; margin:10px; background-color:#f0fff0;\">
                 <h4>📦 {row['PRODUCT']}</h4>
-                <div style="font-size:16px; line-height:1.8;">
+                <div style=\"font-size:16px; line-height:1.8;\">
                     🔢 발주수량: {row['발주수량']}개<br>
                     📝 주문상세: {row['주문상세']}<br>
                     📦 상태: {row['상태표시']}<br>
@@ -200,10 +204,10 @@ for _, row in sorted_df.iterrows():
     }.get(days_to_eta, f"🗖 D-Day: {d_day}")
     border_color = get_border_color(d_day)
     st.markdown(f"""
-    <div style="border:3px solid {border_color}; border-radius:14px; padding:26px; margin-bottom:22px; background-color:#fefefe;">
+    <div style=\"border:3px solid {border_color}; border-radius:14px; padding:26px; margin-bottom:22px; background-color:#fefefe;\">
         <h3>📦 {row['PRODUCT']}</h3>
-        <div style="font-size:20px; font-weight:bold;">{d_day_display}</div>
-        <div style="line-height:2.1; font-size:18px; margin-top:16px;">
+        <div style=\"font-size:20px; font-weight:bold;\">{d_day_display}</div>
+        <div style=\"line-height:2.1; font-size:18px; margin-top:16px;\">
             🔢 발주수량: {row['발주수량']}개<br>
             📝 주문상세: {row['주문상세']}<br>
             📦 상태: {row['상태표시']}<br>
