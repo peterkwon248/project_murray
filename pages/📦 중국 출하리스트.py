@@ -1,3 +1,4 @@
+# ✅ 중국 출하리스트 필터 대시보드 (모델명 다중선택 + 도착/미도착 모두 포함)
 import streamlit as st
 import pandas as pd
 import gspread
@@ -13,7 +14,7 @@ today = datetime.now(ZoneInfo("Asia/Seoul")).date()
 today_str = today.strftime("%Y-%m-%d")
 st.set_page_config(page_title="중국 출하 리스트 (ETA 기준)", layout="wide")
 st.title("📦 중국 출하 리스트 (📅 ETA+1 기준 미도착 필터링)")
-st.markdown(f"### \u23f0 기준일: **{today_str} (KST)**")
+st.markdown(f"### ⏰ 기준일: **{today_str} (KST)**")
 
 # ✅ 구글 인증
 if "gcp_service_account" in os.environ:
@@ -58,43 +59,33 @@ filtered_df["도착여부"] = filtered_df.apply(
 # ✅ D-Day 계산
 def classify_dday(row):
     eta = row["회사도착 예상일(=ETA+1)"]
-    if pd.isna(eta):
-        return "N/A"
-    elif eta.date() < today and row["도착여부"] == "미도착 🔴":
+    if pd.isna(eta): return "N/A"
+    if eta.date() < today and row["도착여부"] == "미도착 🔴":
         return f"D+{(today - eta.date()).days} ⚠️"
     elif eta.date() == today:
         return "Today"
     elif eta.date() > today:
         return f"D-{(eta.date() - today).days}"
-    else:
-        return "✅"
+    return "✅"
 
 filtered_df["D-Day"] = filtered_df.apply(classify_dday, axis=1)
 
 # ✅ 상태 이모지 변환
 def status_emoji(status):
     status = str(status).strip()
-    if status == "회사 도착":
-        return "✅ 회사 도착"
-    elif "지연" in status:
-        return "⚠️ 지연됨"
-    elif "생산" in status:
-        return "⏳ 생산중"
-    else:
-        return f"🔍 {status}"
+    if status == "회사 도착": return "✅ 회사 도착"
+    if "지연" in status: return "⚠️ 지연됨"
+    if "생산" in status: return "⏳ 생산중"
+    return f"🔍 {status}"
 
 filtered_df["상태표시"] = filtered_df["상태"].apply(status_emoji)
 
-# ✅ 테두리 색상
-def get_border_color(d_day_str):
-    if "D+" in d_day_str:
-        return "#E74C3C"
-    elif "D-DAY" in d_day_str or "Today" in d_day_str:
-        return "#2ECC71"
-    elif "D-1" in d_day_str or "D-2" in d_day_str:
-        return "#F4D03F"
-    else:
-        return "#3498DB"
+# ✅ 테두리 색상 함수
+def get_border_color(d_day):
+    if "D+" in d_day: return "#E74C3C"
+    if "D-DAY" in d_day or "Today" in d_day: return "#2ECC71"
+    if "D-1" in d_day or "D-2" in d_day: return "#F4D03F"
+    return "#3498DB"
 
 # ✅ 상단 요약
 col1, col2, col3, col4 = st.columns(4)
@@ -103,7 +94,7 @@ col2.metric("도착 완료", sum(filtered_df["도착여부"].str.contains("도�
 col3.metric("미도착", sum(filtered_df["도착여부"].str.contains("미도착")))
 col4.metric("💼 지연 건", sum(filtered_df["D-Day"].str.contains("D\\+")))
 
-# ✅ 캘린더 뷰
+# ✅ 캘린더
 st.subheader("🗓 ETA 일정 캘린더 (달력 스타일 뷰)")
 events = []
 for _, row in filtered_df.iterrows():
@@ -124,36 +115,38 @@ calendar(events=events, options={
     "initialView": "dayGridMonth",
     "locale": "ko",
     "height": 600,
-    "headerToolbar": {
-        "start": "title", "center": "", "end": "today prev,next"
-    }
-}, key="calendar_view_only")
+    "headerToolbar": {"start": "title", "center": "", "end": "today prev,next"}
+}, key="calendar_view")
 
-# ✅ 사이드바 필터
+# ✅ 사이드바 필터 (날짜 + 모델 다중 선택)
 st.sidebar.markdown("## 🔎 날짜 및 모델명 필터")
-selected_sidebar_date = st.sidebar.date_input("출하 예정일 선택", value=today)
-search_term = st.sidebar.text_input("🔍 모델명 검색", "")
-matched = filtered_df[filtered_df["회사도착 예상일(=ETA+1)"].dt.date == selected_sidebar_date]
-if search_term:
-    matched = matched[matched["PRODUCT"].str.contains(search_term, case=False, na=False)]
+selected_date = st.sidebar.date_input("출하 예정일 선택", value=today)
+all_models = sorted(filtered_df["PRODUCT"].dropna().unique())
+selected_models = st.sidebar.multiselect("📦 모델명 검색", all_models)
+
+# ✅ 필터 적용
+matched = filtered_df[filtered_df["회사도착 예상일(=ETA+1)"].dt.date == selected_date]
+if selected_models:
+    matched = matched[matched["PRODUCT"].isin(selected_models)]
 
 arrived = matched[matched["도착여부"] == "도착 완료 ✅"]
 not_arrived = matched[matched["도착여부"] == "미도착 🔴"]
 
-# ✅ 미도착 카드 뷰
-if not not_arrived.empty:
+# ✅ 카드 출력 함수
+def render_cards(df, title, color):
+    if df.empty: return
     st.markdown("---")
-    st.markdown(f"## 🔴 {selected_sidebar_date} 미도착 출하건")
+    st.markdown(f"## {color} {selected_date} {title} 출하건")
     cols = st.columns(3)
-    for i, (_, row) in enumerate(not_arrived.iterrows()):
+    for i, (_, row) in enumerate(df.iterrows()):
         eta = row["회사도착 예상일(=ETA+1)"]
         d_day = row["D-Day"]
         border_color = get_border_color(d_day)
         with cols[i % 3]:
             st.markdown(f"""
-            <div style=\"border:3px solid {border_color}; border-radius:14px; padding:20px; margin:10px; background-color:#fff0f0;\">
+            <div style='border:3px solid {border_color}; border-radius:14px; padding:20px; margin:10px; background-color:#fefefe;'>
                 <h4>📦 {row['PRODUCT']}</h4>
-                <div style=\"font-size:16px; line-height:1.8;\">
+                <div style='font-size:16px; line-height:1.8;'>
                     🔢 발주수량: {row['발주수량']}개<br>
                     📝 주문상세: {row['주문상세']}<br>
                     📦 상태: {row['상태표시']}<br>
@@ -164,31 +157,10 @@ if not not_arrived.empty:
             </div>
             """, unsafe_allow_html=True)
 
-# ✅ 도착 완료 카드 뷰
-if not arrived.empty:
-    st.markdown("---")
-    st.markdown(f"## ✅ {selected_sidebar_date} 도착 완료 출하건")
-    cols = st.columns(3)
-    for i, (_, row) in enumerate(arrived.iterrows()):
-        eta = row["회사도착 예상일(=ETA+1)"]
-        d_day = row["D-Day"]
-        border_color = get_border_color(d_day)
-        with cols[i % 3]:
-            st.markdown(f"""
-            <div style=\"border:3px solid {border_color}; border-radius:14px; padding:20px; margin:10px; background-color:#f0fff0;\">
-                <h4>📦 {row['PRODUCT']}</h4>
-                <div style=\"font-size:16px; line-height:1.8;\">
-                    🔢 발주수량: {row['발주수량']}개<br>
-                    📝 주문상세: {row['주문상세']}<br>
-                    📦 상태: {row['상태표시']}<br>
-                    🗓 ETA+1: {eta.date() if pd.notna(eta) else "N/A"}<br>
-                    🚚 도착여부: {row['도착여부']}<br>
-                    📆 D-Day: {d_day}
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+render_cards(not_arrived, "미도착", "🔴")
+render_cards(arrived, "도착 완료", "✅")
 
-# ✅ 개별 카드 뷰 (ETA+1 기준 전체 7일 이내)
+# ✅ 개별 카드 뷰 (7일 이내 전체 보기)
 st.subheader("📦 개별 출하 현황 (카드 뷰)")
 sorted_df = filtered_df.sort_values(by="회사도착 예상일(=ETA+1)")
 for _, row in sorted_df.iterrows():
@@ -204,10 +176,10 @@ for _, row in sorted_df.iterrows():
     }.get(days_to_eta, f"🗖 D-Day: {d_day}")
     border_color = get_border_color(d_day)
     st.markdown(f"""
-    <div style=\"border:3px solid {border_color}; border-radius:14px; padding:26px; margin-bottom:22px; background-color:#fefefe;\">
+    <div style='border:3px solid {border_color}; border-radius:14px; padding:26px; margin-bottom:22px; background-color:#fefefe;'>
         <h3>📦 {row['PRODUCT']}</h3>
-        <div style=\"font-size:20px; font-weight:bold;\">{d_day_display}</div>
-        <div style=\"line-height:2.1; font-size:18px; margin-top:16px;\">
+        <div style='font-size:20px; font-weight:bold;'>{d_day_display}</div>
+        <div style='line-height:2.1; font-size:18px; margin-top:16px;'>
             🔢 발주수량: {row['발주수량']}개<br>
             📝 주문상세: {row['주문상세']}<br>
             📦 상태: {row['상태표시']}<br>
