@@ -17,11 +17,11 @@ st.set_page_config(page_title="중국 출하 리스트 (ETA 기준)", layout="wi
 st.title("📦 중국 출하 리스트 (🗕 ETA+1 기준 미도착 필터링)")
 st.markdown(f"### ⏰ 기준일: **{today_str} (KST)**")
 
-# ✅ 구글 인증 (환경 변수 또는 secrets.toml 자동 처리)
-if "gcp_service_account" in st.secrets:
-    SERVICE_ACCOUNT_INFO = st.secrets["gcp_service_account"]
-else:
+# ✅ 구글 인증: Railway or local secrets.toml
+if "gcp_service_account" in os.environ:
     SERVICE_ACCOUNT_INFO = json.loads(os.environ["gcp_service_account"])
+else:
+    SERVICE_ACCOUNT_INFO = st.secrets["gcp_service_account"]
 
 credentials = Credentials.from_service_account_info(
     SERVICE_ACCOUNT_INFO,
@@ -84,16 +84,16 @@ def status_emoji(status):
 
 filtered_df["상태표시"] = filtered_df["상태"].apply(status_emoji)
 
-# ✅ 테두리 색상 결정 함수 (D-Day 기준)
+# ✅ 테두리 색상 결정 함수
 def get_border_color(d_day_str):
     if "D+" in d_day_str:
-        return "#E74C3C"  # 지연 - 빨강
+        return "#E74C3C"  # 지연
     elif "D-DAY" in d_day_str or "Today" in d_day_str:
-        return "#2ECC71"  # 오늘 도착 - 초록
+        return "#2ECC71"  # 오늘 도착
     elif "D-1" in d_day_str or "D-2" in d_day_str:
-        return "#F4D03F"  # 임박 - 노랑
+        return "#F4D03F"  # 임박
     else:
-        return "#3498DB"  # 여유 - 파랑
+        return "#3498DB"  # 여유
 
 # ✅ 상단 요약
 col1, col2, col3, col4 = st.columns(4)
