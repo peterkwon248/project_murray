@@ -12,7 +12,7 @@ import json
 today = datetime.now(ZoneInfo("Asia/Seoul")).date()
 today_str = today.strftime("%Y-%m-%d")
 st.set_page_config(page_title="중국 출하 리스트 (ETA 기준)", layout="wide")
-st.title("\ud83d\udce6 중국 출하 리스트 (\ud83d\uddf5 ETA+1 기준 미도착 필터링)")
+st.title("📦 중국 출하 리스트 (📅 ETA+1 기준 미도착 필터링)")
 st.markdown(f"### \u23f0 기준일: **{today_str} (KST)**")
 
 # ✅ 구글 인증
