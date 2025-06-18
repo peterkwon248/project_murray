@@ -1,4 +1,4 @@
-# ✅ 중국 출하리스트 필터 대시보드 (모델명 다중선택 + 도착/미도착 모두 포함)
+# ✅ 중국 출하리스트 전체 필터 대시보드 (도착 여부와 관계없이 모델명 다중 검색 가능)
 import streamlit as st
 import pandas as pd
 import gspread
@@ -13,7 +13,7 @@ import json
 today = datetime.now(ZoneInfo("Asia/Seoul")).date()
 today_str = today.strftime("%Y-%m-%d")
 st.set_page_config(page_title="중국 출하 리스트 (ETA 기준)", layout="wide")
-st.title("📦 중국 출하 리스트 (📅 ETA+1 기준 미도착 필터링)")
+st.title("📦 중국 출하 리스트 (📅 ETA+1 기준 전체 검색 포함)")
 st.markdown(f"### ⏰ 기준일: **{today_str} (KST)**")
 
 # ✅ 구글 인증
@@ -41,20 +41,8 @@ df["ETD배타는 날"] = pd.to_datetime(df["ETD배타는 날"], errors="coerce")
 df["회사실제 도착일"] = pd.to_datetime(df["회사실제 도착일"], errors="coerce")
 df["회사도착 예상일(=ETA+1)"] = pd.to_datetime(df["회사도착 예상일(=ETA+1)"], errors="coerce")
 
-# ✅ 필터링 (지연 포함 + 도착 상태 기반)
-filtered_df = df[
-    (df["회사도착 예상일(=ETA+1)"].notna()) &
-    (
-        (df["회사도착 예상일(=ETA+1)"].dt.date >= today) |
-        ((df["회사도착 예상일(=ETA+1)"].dt.date < today) & (df["상태"].str.strip() != "회사 도착"))
-    )
-].copy()
-
 # ✅ 도착여부 (상태 기반)
-filtered_df["도착여부"] = filtered_df.apply(
-    lambda row: "도착 완료 ✅" if str(row["상태"]).strip() == "회사 도착" else "미도착 🔴",
-    axis=1
-)
+df["도착여부"] = df["상태"].apply(lambda x: "도착 완료 ✅" if str(x).strip() == "회사 도착" else "미도착 🔴")
 
 # ✅ D-Day 계산
 def classify_dday(row):
@@ -68,7 +56,7 @@ def classify_dday(row):
         return f"D-{(eta.date() - today).days}"
     return "✅"
 
-filtered_df["D-Day"] = filtered_df.apply(classify_dday, axis=1)
+df["D-Day"] = df.apply(classify_dday, axis=1)
 
 # ✅ 상태 이모지 변환
 def status_emoji(status):
@@ -78,7 +66,7 @@ def status_emoji(status):
     if "생산" in status: return "⏳ 생산중"
     return f"🔍 {status}"
 
-filtered_df["상태표시"] = filtered_df["상태"].apply(status_emoji)
+df["상태표시"] = df["상태"].apply(status_emoji)
 
 # ✅ 테두리 색상 함수
 def get_border_color(d_day):
@@ -87,21 +75,29 @@ def get_border_color(d_day):
     if "D-1" in d_day or "D-2" in d_day: return "#F4D03F"
     return "#3498DB"
 
-# ✅ 상단 요약
+# ✅ 상단 요약 (미래 or 미도착 기준 필터링)
+filtered_df = df[
+    df["회사도착 예상일(=ETA+1)"].notna() &
+    (
+        (df["회사도착 예상일(=ETA+1)"].dt.date >= today) |
+        ((df["회사도착 예상일(=ETA+1)"].dt.date < today) & (df["도착여부"] != "도착 완료 ✅"))
+    )
+]
+
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("전체 건수", len(filtered_df))
-col2.metric("도착 완료", sum(filtered_df["도착여부"].str.contains("도착 완료")))
-col3.metric("미도착", sum(filtered_df["도착여부"].str.contains("미도착")))
+col2.metric("도착 완료", sum(filtered_df["도착여부"] == "도착 완료 ✅"))
+col3.metric("미도착", sum(filtered_df["도착여부"] == "미도착 🔴"))
 col4.metric("💼 지연 건", sum(filtered_df["D-Day"].str.contains("D\\+")))
 
 # ✅ 캘린더
 st.subheader("🗓 ETA 일정 캘린더 (달력 스타일 뷰)")
 events = []
-for _, row in filtered_df.iterrows():
+for _, row in df.iterrows():
     eta = row["회사도착 예상일(=ETA+1)"]
     if pd.isna(eta): continue
-    product = row["PRODUCT"]
     status = row["상태표시"]
+    product = row["PRODUCT"]
     color = "#2ECC71" if "도착" in status else "#E74C3C"
     events.append({
         "title": f"{product} - {status}",
@@ -118,14 +114,14 @@ calendar(events=events, options={
     "headerToolbar": {"start": "title", "center": "", "end": "today prev,next"}
 }, key="calendar_view")
 
-# ✅ 사이드바 필터 (날짜 + 모델 다중 선택)
+# ✅ 사이드바 필터 (과거 포함 + 다중 선택)
 st.sidebar.markdown("## 🔎 날짜 및 모델명 필터")
 selected_date = st.sidebar.date_input("출하 예정일 선택", value=today)
-all_models = sorted(filtered_df["PRODUCT"].dropna().unique())
+all_models = sorted(df["PRODUCT"].dropna().unique())
 selected_models = st.sidebar.multiselect("📦 모델명 검색", all_models)
 
 # ✅ 필터 적용
-matched = filtered_df[filtered_df["회사도착 예상일(=ETA+1)"].dt.date == selected_date]
+matched = df[df["회사도착 예상일(=ETA+1)"].dt.date == selected_date]
 if selected_models:
     matched = matched[matched["PRODUCT"].isin(selected_models)]
 
@@ -160,15 +156,14 @@ def render_cards(df, title, color):
 render_cards(not_arrived, "미도착", "🔴")
 render_cards(arrived, "도착 완료", "✅")
 
-# ✅ 개별 카드 뷰 (7일 이내 전체 보기)
-st.subheader("📦 개별 출하 현황 (카드 뷰)")
-sorted_df = filtered_df.sort_values(by="회사도착 예상일(=ETA+1)")
-for _, row in sorted_df.iterrows():
+# ✅ 개별 카드 뷰 (7일 이내)
+st.subheader("📦 개별 출하 현황 (ETA+1 기준 7일 이내)")
+for _, row in df.sort_values("회사도착 예상일(=ETA+1)").iterrows():
     eta = row["회사도착 예상일(=ETA+1)"]
     d_day = row["D-Day"]
-    days_to_eta = (eta.date() - today).days if pd.notna(eta) else None
-    if days_to_eta is None or not (0 <= days_to_eta <= 7):
-        continue
+    if pd.isna(eta): continue
+    days_to_eta = (eta.date() - today).days
+    if not (0 <= days_to_eta <= 7): continue
     d_day_display = {
         2: "🐢 D-2: 도착 임박",
         1: "🐇 D-1: 매우 임박!",
@@ -183,7 +178,7 @@ for _, row in sorted_df.iterrows():
             🔢 발주수량: {row['발주수량']}개<br>
             📝 주문상세: {row['주문상세']}<br>
             📦 상태: {row['상태표시']}<br>
-            🗓 ETA+1: {eta.date() if pd.notna(eta) else "N/A"}<br>
+            🗓 ETA+1: {eta.date()}<br>
             🚚 도착여부: {row['도착여부']}
         </div>
     </div>
@@ -191,7 +186,7 @@ for _, row in sorted_df.iterrows():
 
 # ✅ 원본 표 보기
 if st.checkbox("📄 원본 표 보기"):
-    st.dataframe(filtered_df[[
+    st.dataframe(df[[
         "PRODUCT", "발주수량", "주문상세", "AS불량건 요청수량",
         "실제 출하 수량", "출하예정일", "ETD배타는 날",
         "상태표시", "회사도착 예상일(=ETA+1)", "회사실제 도착일",
