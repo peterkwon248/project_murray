@@ -117,13 +117,13 @@ calendar(events=events, options={
 # ✅ 사이드바 필터 (과거 포함 + 다중 선택)
 st.sidebar.markdown("## 🔎 날짜 및 모델명 필터")
 selected_date = st.sidebar.date_input("출하 예정일 선택", value=today)
-all_models = sorted(df["PRODUCT"].dropna().unique())
+all_models = sorted(df["모델명"].dropna().unique())
 selected_models = st.sidebar.multiselect("📦 모델명 검색", all_models)
 
 # ✅ 필터 적용
 matched = df[df["회사도착 예상일(=ETA+1)"].dt.date == selected_date]
 if selected_models:
-    matched = matched[matched["PRODUCT"].isin(selected_models)]
+    matched = matched[matched["모델명"].isin(selected_models)]
 
 arrived = matched[matched["도착여부"] == "도착 완료 ✅"]
 not_arrived = matched[matched["도착여부"] == "미도착 🔴"]
@@ -142,6 +142,9 @@ def render_cards(df, title, color):
             st.markdown(f"""
             <div style='border:3px solid {border_color}; border-radius:14px; padding:20px; margin:10px; background-color:#fefefe;'>
                 <h4>📦 {row['PRODUCT']}</h4>
+                <div style='font-size:15px; margin-bottom:4px;'>
+                    <b>모델명:</b> {row['모델명']}
+                </div>
                 <div style='font-size:16px; line-height:1.8;'>
                     🔢 발주수량: {row['발주수량']}개<br>
                     📝 주문상세: {row['주문상세']}<br>
